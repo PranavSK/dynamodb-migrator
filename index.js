@@ -37,12 +37,31 @@ const retry = async (count, delay, fn) => {
   throw lastError;
 };
 
+const attributeTypeMap = {
+  String: "S",
+  Number: "N",
+  Binary: "B",
+};
+const getSimpleTableProperties = ({ PrimaryKey, ...table }) => {
+  const { Name, Type } = PrimaryKey ?? { Name: "id", Type: "S" };
+  return {
+    ...table,
+    KeySchema: [{ AttributeName: Name, KeyType: "HASH" }],
+    AttributeDefinitions: [{ AttributeName: Name, AttributeType: attributeTypeMap[Type] }],
+    ...(table.ProvisionedThroughput == null && { BillingMode: "PAY_PER_REQUEST" }),
+  };
+};
+
 const samTemplateFile = fs.readFileSync("template.yaml", "utf8");
 const samTemplate = yamlParse(samTemplateFile);
 const resources = samTemplate.Resources;
 const dynamoDbResources = Object.values(resources)
   .filter((resource) => resource.Type === "AWS::DynamoDB::Table" || resource.Type === "AWS::Serverless::SimpleTable")
-  .map((resource) => resource.Properties);
+  .map((resource) =>
+    resource.Type === "AWS::Serverless::SimpleTable"
+      ? getSimpleTableProperties(resource.Properties)
+      : resource.Properties,
+  );
 
 const url = process.env.DYNAMODB_ENDPOINT;
 const region = process.env.AWS_REGION;
